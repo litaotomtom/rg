@@ -266,8 +266,30 @@
     function spawnCannonForSide(team){
       const z = team==='US' ? -18 : 18;
       const x = team==='US' ? -24 : 24;
-      const cannon = BABYLON.MeshBuilder.CreateBox('cannon_'+team, { height:0.8, width:1.6, depth:0.8 }, scene);
-      cannon.position.set(x,0.4,z); cannon.isPickable = false; sg.addShadowCaster(cannon);
+
+      const barrel = BABYLON.MeshBuilder.CreateCylinder('barrel_'+team, { diameter:0.38, height:2.2, tessellation:12 }, scene);
+      barrel.rotation.x = Math.PI/2;
+      barrel.position.set(0,0.55,0.4);
+
+      const base = BABYLON.MeshBuilder.CreateBox('base_'+team, { width:1.4, height:0.6, depth:1.2 }, scene);
+      base.position.set(0,0.3,-0.2);
+
+      const wheel1 = BABYLON.MeshBuilder.CreateCylinder('wheel1_'+team, { diameter:0.9, height:0.25, tessellation:12 }, scene);
+      wheel1.position.set(-0.6,0.45,-0.25);
+      const wheel2 = wheel1.clone('wheel2_'+team);
+      wheel2.position.x = 0.6;
+
+      const metal = new BABYLON.StandardMaterial('cannonMetal_'+team, scene);
+      metal.diffuseColor = new BABYLON.Color3(0.2,0.2,0.2);
+      const wood = new BABYLON.StandardMaterial('cannonWood_'+team, scene);
+      wood.diffuseColor = new BABYLON.Color3(0.36,0.25,0.18);
+      barrel.material = metal; base.material = wood; wheel1.material = wood; wheel2.material = wood;
+
+      const cannon = BABYLON.Mesh.MergeMeshes([barrel, base, wheel1, wheel2], true, true, undefined, false, true);
+      cannon.position.set(x,0,z);
+      cannon.rotation.y = team==='US' ? 0 : Math.PI;
+      cannon.isPickable = false; sg.addShadowCaster(cannon);
+
       const soldierPos = new BABYLON.Vector3(x + (team==='US'?1.5:-1.5), 0, z + (team==='US'?0.5:-0.5));
       const op = new Unit({ team, position: soldierPos });
       op.lookAt(new BABYLON.Vector3(op.mesh.position.x, 0, team==='US'?12:-12));
@@ -442,6 +464,10 @@
         if (ukVolleyCD > 0) ukVolleyCD = Math.max(0, ukVolleyCD - dt);
         if (usCannonCD > 0) usCannonCD = Math.max(0, usCannonCD - dt);
         if (ukHurricaneCD > 0) ukHurricaneCD = Math.max(0, ukHurricaneCD - dt);
+
+        if (ukVolleyCD <= 0) { const ready = unitsUK.filter(u=>u.alive); for (const u of ready) u.tryInstantFire(unitsUS); ukVolleyCD = 20; }
+        if (ukHurricaneCD <= 0) { const targets = unitsUS.filter(u=>u.alive); if (targets.length){ const t = targets[Math.floor(Math.random()*targets.length)]; doHurricaneAt(t.mesh.position.clone(), HURRICANE_RADIUS, unitsUS); ukHurricaneCD = 6; } }
+
         for (const u of unitsUS) u.update(dt, unitsUK);
         for (const u of unitsUK) u.update(dt, unitsUS);
         for (const c of cannons){ c.cooldown -= dt; if (c.cooldown <= 0){ const enemies = c.team==='US' ? unitsUK : unitsUS; const alive = enemies.filter(e=>e.alive); if (alive.length){ const targetUnit = alive[Math.floor(Math.random()*alive.length)]; const miss = new BABYLON.Vector3(randNorm()*2,0,randNorm()*2); const target = targetUnit.mesh.position.add(miss); fireCannon(c.mesh.position.add(new BABYLON.Vector3(0,0.3,0)), target, enemies); } c.cooldown = 3 + Math.random()*1.5; }}
