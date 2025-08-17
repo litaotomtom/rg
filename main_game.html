@@ -247,7 +247,11 @@
         if (!best) { this.cooldown -= dt; return; }
         this.lookAt(best.mesh.position);
         if (bd <= this.range) { if (this.cooldown <= 0) this.fireAt(best); else this.cooldown -= dt; }
-        else { this.cooldown -= dt; }
+        else {
+          const step = Math.max(0.0, bd - this.range);
+          if (step !== 0) this.mesh.position.addInPlace(this.mesh.forward.scale(step * dt));
+          this.cooldown -= dt;
+        }
       }
       applyRally(duration=8, rofMult=1.3, accMult=1.18){ this.buffTimer = Math.max(this.buffTimer, duration); this.buffRofMult = Math.max(this.buffRofMult, rofMult); this.buffAccMult = Math.max(this.buffAccMult, accMult); }
       tryInstantFire(enemies){ if (!this.alive) return; if (this.cooldown > 0.2) return; let best = null; let bd = 9999; for (const e of enemies) { if (!e.alive) continue; const d = BABYLON.Vector3.Distance(this.mesh.position, e.mesh.position); if (d < bd) { bd = d; best = e; } } if (best && bd <= this.range) this.fireAt(best); }
