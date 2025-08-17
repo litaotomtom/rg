@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Revolutionary War 3D — US vs UK</title>
+  <style>
+    html, body { height: 100%; margin: 0; overflow: hidden; background: #0b1220; }
+    #gameCanvas { width: 100%; height: 100%; display: block; }
+    .hud {
+      position: fixed; left: 16px; top: 16px; z-index: 10; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      color: #e6eefc; user-select: none;
+    }
+    .panel {
+      backdrop-filter: blur(6px); background: rgba(10, 20, 40, 0.55); border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 14px; padding: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+      max-width: 820px;
+    }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    button {
+      appearance: none; border: 0; padding: 10px 12px; border-radius: 10px; cursor: pointer; font-weight: 600; letter-spacing: 0.2px;
+      background: #2b5cff; color: white; transition: transform .06s ease, opacity .2s ease, background .2s ease;
+    }
+    button.secondary { background: #3c445e; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    button:active { transform: translateY(1px) scale(.99); }
+    .stat { margin-top: 10px; font-size: 14px; opacity: .9; }
+    .banner {
+      position: fixed; inset: 0; display: none; place-items: center; background: rgba(4,8,16,0.75);
+      color: #e6eefc; font-family: ui-sans-serif, system-ui; z-index: 20;
+    }
+    .banner .card {
+      background: rgba(9,16,32,0.92); border: 1px solid rgba(255,255,255,.08); padding: 22px; border-radius: 16px; text-align: center;
+      box-shadow: 0 30px 80px rgba(0,0,0,.45);
+      max-width: 560px;
+    }
+    .title { font-weight: 800; font-size: 20px; letter-spacing: .3px; margin-bottom: 6px; }
+    .subtitle { opacity: .9; font-size: 14px; margin-bottom: 14px; }
+    .tag { font-size: 12px; padding: 4px 8px; border-radius: 999px; display:inline-block; background: rgba(42,111,255,.18); border: 1px solid rgba(42,111,255,.38); }
+    .tests { margin-top: 8px; font-size: 12px; opacity: .85; }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+
+  <div class="hud">
+    <div class="panel">
+      <div style="font-weight:800; letter-spacing:.3px; margin-bottom:8px">Revolutionary War 3D — US vs UK</div>
+      <div class="row" style="margin-bottom:8px">
+        <button id="startBtn">Start Battle</button>
+        <button id="resetBtn" class="secondary" disabled>Reset</button>
+        <button id="runTestsBtn" class="secondary">Run Self‑Tests</button>
+      </div>
+      <div class="row" style="margin-bottom:8px">
+        <button id="usChargeBtn" title="Washington: Charge Soldiers — boost US fire rate & accuracy for 8s" disabled>Washington: Charge Soldiers</button>
+        <button id="usCannonBtn" title="Washington: Cannon — click ground to target" disabled>Washington: Cannon</button>
+        <button id="ukVolleyBtn" title="Cornwallis: Volley — UK instantly fires a volley" disabled>Cornwallis: Volley</button>
+        <button id="ukHurricaneBtn" title="Cornwallis: Hurricane — click ground to summon a whirlwind that knocks up & stuns enemies" disabled>Cornwallis: Hurricane</button>
+      </div>
+      <div class="stat" id="score">US: 0 alive • UK: 0 alive</div>
+      <div class="stat" id="tip">Tip: drag to orbit, mousewheel zoom, right‑click to pan. Click a hero skill when ready.</div>
+      <div class="tests" id="testsOut"></div>
+    </div>
+  </div>
+
+  <div class="banner" id="banner">
+    <div class="card">
+      <div class="title" id="bannerTitle"></div>
+      <div class="subtitle" id="bannerSub"></div>
+      <div style="margin-top:12px"><span class="tag">Reload this page or click Reset for a new match</span></div>
+      <div style="margin-top:14px">
+        <button id="closeBanner" class="secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Babylon.js UMD builds (no imports/exports) -->
+  <script src="https://cdn.babylonjs.com/babylon.js"></script>
+  <script src="https://cdn.babylonjs.com/gui/babylon.gui.min.js"></script>
+  <script>
+  (() => {
+    // ===== Utilities =====
+    const randNorm = () => { let u = 0, v = 0; while (u === 0) u = Math.random(); while (v === 0) v = Math.random(); return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v); };
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    const distXZ = (a, b) => { const dx = a.x - b.x, dz = a.z - b.z; return Math.sqrt(dx*dx + dz*dz); };
+
+    // ===== Audio =====
+    let audioCtx = null; function ensureAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    function playMusket(volume = 0.35) {
+      if (!audioCtx) return; const ctx = audioCtx; const sr = ctx.sampleRate; const dur = 0.18; const buf = ctx.createBuffer(1, Math.floor(sr * dur), sr);
+      const data = buf.getChannelData(0); for (let i = 0; i < data.length; i++) { const t = i / sr; const env = Math.exp(-t * 16); data[i] = (Math.random() * 2 - 1) * env * 0.7; }
+      const src = ctx.createBufferSource(); src.buffer = buf; const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1800; bp.Q.value = 0.7; const gain = ctx.createGain(); gain.gain.value = volume; src.connect(bp).connect(gain).connect(ctx.destination); src.start();
+      const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.setValueAtTime(120, ctx.currentTime); const g = ctx.createGain(); g.gain.setValueAtTime(0.22 * volume, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12); o.connect(g).connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 0.12);
+    }
+    function playFanfare(team) {
+      if (!audioCtx) return; const ctx = audioCtx; const root = team === 'US' ? 523.25 : 392.00; const o1 = ctx.createOscillator(); const o2 = ctx.createOscillator(); const g = ctx.createGain(); g.gain.value = 0.12; o1.type = 'sawtooth'; o2.type = 'square'; o1.frequency.value = root; o2.frequency.value = root * 1.5; o1.connect(g); o2.connect(g); g.connect(ctx.destination); o1.start(); o2.start(); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1.2); o1.stop(ctx.currentTime + 1.25); o2.stop(ctx.currentTime + 1.25);
+    }
+    function playExplosion(volume = 0.8) {
+      if (!audioCtx) return; const ctx = audioCtx; const dur = 0.7; const sr = ctx.sampleRate; const buf = ctx.createBuffer(1, Math.floor(sr * dur), sr); const data = buf.getChannelData(0);
+      for (let i=0;i<data.length;i++){ const t=i/sr; const env = Math.exp(-t*3); data[i] = (Math.random()*2-1) * env; }
+      const src = ctx.createBufferSource(); src.buffer = buf; const lp = ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value = 500; const gain = ctx.createGain(); gain.gain.value = volume; src.connect(lp).connect(gain).connect(ctx.destination); src.start();
+      const boom = ctx.createOscillator(); const g2 = ctx.createGain(); boom.type='sine'; boom.frequency.setValueAtTime(90, ctx.currentTime); g2.gain.setValueAtTime(0.4*volume, ctx.currentTime); g2.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4); boom.connect(g2).connect(ctx.destination); boom.start(); boom.stop(ctx.currentTime + 0.4);
+    }
+    function playWind(volume = 0.6, dur = 1.3) {
+      if (!audioCtx) return; const ctx = audioCtx; const sr = ctx.sampleRate;
+      const buf = ctx.createBuffer(1, Math.floor(sr * dur), sr); const data = buf.getChannelData(0);
+      for (let i=0;i<data.length;i++){ const t=i/sr; const env = Math.min(1, t*3) * Math.exp(-Math.max(0, t-0.6)*2.0); data[i] = (Math.random()*2-1) * env; }
+      const src = ctx.createBufferSource(); src.buffer = buf; const bp = ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value = 800; bp.Q.value = 0.8; const gain = ctx.createGain(); gain.gain.value = volume; src.connect(bp).connect(gain).connect(ctx.destination); src.start();
+    }
+    function playScream(volume = 0.25) {
+      if (!audioCtx) return; const ctx = audioCtx; const now = ctx.currentTime;
+      const base = 300 + Math.random()*220; // Hz
+      const o = ctx.createOscillator(); o.type = 'triangle';
+      o.frequency.setValueAtTime(base, now);
+      o.frequency.exponentialRampToValueAtTime(base * 0.5, now + 0.35);
+      const nDur = 0.18; const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * nDur), ctx.sampleRate); const data = buf.getChannelData(0);
+      for (let i=0;i<data.length;i++){ const t = i/ctx.sampleRate; const env = Math.exp(-t*10); data[i] = (Math.random()*2-1) * env; }
+      const n = ctx.createBufferSource(); n.buffer = buf; const hp = ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value = 1200; const mix = ctx.createGain(); mix.gain.value = 0.12 * volume;
+      n.connect(hp).connect(mix);
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, now); g.gain.linearRampToValueAtTime(0.32*volume, now+0.03); g.gain.exponentialRampToValueAtTime(0.0001, now+0.5);
+      o.connect(g).connect(ctx.destination); mix.connect(ctx.destination);
+      o.start(now); o.stop(now+0.5); n.start(now); n.stop(now+nDur);
+    }
+    function playChargeChorus() {
+      if (!audioCtx) return; const ctx = audioCtx; const sr = ctx.sampleRate;
+      for (let i=0;i<6;i++){
+        const start = ctx.currentTime + i*0.02 + Math.random()*0.05;
+        // "ch" burst
+        const chDur = 0.08; const b = ctx.createBuffer(1, Math.floor(sr * chDur), sr); const d = b.getChannelData(0);
+        for (let k=0;k<d.length;k++){ const t=k/sr; const env = Math.exp(-t*30); d[k] = (Math.random()*2-1) * env; }
+        const nb = ctx.createBufferSource(); nb.buffer = b; const hp = ctx.createBiquadFilter(); hp.type='highpass'; hp.frequency.value = 1800; const g1 = ctx.createGain(); g1.gain.value = 0.18; nb.connect(hp).connect(g1).connect(ctx.destination); nb.start(start);
+        // vowel body
+        const o = ctx.createOscillator(); o.type = 'sawtooth'; const f0 = 180 + Math.random()*120; o.frequency.setValueAtTime(f0, start); o.frequency.exponentialRampToValueAtTime(f0*0.75, start+0.35);
+        const bp = ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value = 900; bp.Q.value = 1.0;
+        const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, start); g.gain.linearRampToValueAtTime(0.28, start+0.04); g.gain.exponentialRampToValueAtTime(0.0001, start+0.5);
+        o.connect(bp).connect(g).connect(ctx.destination); o.start(start); o.stop(start+0.55);
+      }
+    }
+
+    // ===== Babylon Setup =====
+    const canvas = document.getElementById('gameCanvas');
+    const engine = new BABYLON.Engine(canvas, true, { stencil: true, preserveDrawingBuffer: true });
+    const scene = new BABYLON.Scene(engine);
+    scene.clearColor = new BABYLON.Color4(0.03, 0.06, 0.12, 1.0);
+
+    // Camera
+    const camera = new BABYLON.ArcRotateCamera('cam', Math.PI * 1.1, 1.0, 35, new BABYLON.Vector3(0, 1.5, 0), scene);
+    camera.lowerBetaLimit = 0.4; camera.upperBetaLimit = 1.4; camera.lowerRadiusLimit = 12; camera.upperRadiusLimit = 120;
+    camera.wheelPrecision = 15; camera.panningSensibility = 200; camera.panningAxis = new BABYLON.Vector3(1, 0, 1);
+    camera.attachControl(canvas, true);
+
+    // Lights
+    const hemi = new BABYLON.HemisphericLight('h', new BABYLON.Vector3(0, 1, 0), scene); hemi.intensity = 0.9;
+    const dir = new BABYLON.DirectionalLight('d', new BABYLON.Vector3(-0.8, -1.2, 0.6), scene); dir.position = new BABYLON.Vector3(30, 40, -20); dir.intensity = 0.7;
+
+    // Ground
+    const ground = BABYLON.MeshBuilder.CreateGround('ground', { width: 120, height: 80, subdivisions: 16 }, scene);
+    const gmat = new BABYLON.StandardMaterial('gmat', scene); gmat.diffuseColor = new BABYLON.Color3(0.15, 0.28, 0.16); gmat.specularColor = BABYLON.Color3.Black();
+    ground.material = gmat; ground.receiveShadows = true;
+
+    // Trees
+    const treeMat = new BABYLON.StandardMaterial('treeLeaf', scene); treeMat.diffuseColor = new BABYLON.Color3(0.12, 0.38, 0.18);
+    const trunkMat = new BABYLON.StandardMaterial('trunk', scene); trunkMat.diffuseColor = new BABYLON.Color3(0.28, 0.18, 0.1);
+    function spawnTree(x, z) {
+      const trunk = BABYLON.MeshBuilder.CreateCylinder('trunk', { height: 2.2, diameter: 0.35 }, scene); trunk.material = trunkMat; trunk.position.set(x, 1.1, z);
+      const crown = BABYLON.MeshBuilder.CreateSphere('crown', { diameter: 2.1, segments: 8 }, scene); crown.material = treeMat; crown.position.set(x, 2.3, z);
+      const merged = BABYLON.Mesh.MergeMeshes([trunk, crown], true, true, undefined, false, true); merged.isPickable = false; return merged;
+    }
+    for (let i=0;i<10;i++) spawnTree(-40 + Math.random()*80, -30 + Math.random()*60);
+
+    // Shadows
+    const sg = new BABYLON.ShadowGenerator(2048, dir); sg.usePercentageCloserFiltering = true; sg.bias = 0.001;
+
+    // GUI
+    const ui = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI('ui');
+
+    // ===== Soldier Models =====
+    const COLORS = { US: new BABYLON.Color3(0.12, 0.3, 0.85), UK: new BABYLON.Color3(0.8, 0.08, 0.08) };
+    function buildSoldierMaster(teamKey) {
+      const jacketMat = new BABYLON.StandardMaterial('jacket_'+teamKey, scene); jacketMat.diffuseColor = COLORS[teamKey]; jacketMat.specularColor = new BABYLON.Color3(0.2,0.2,0.2);
+      const pantsMat = new BABYLON.StandardMaterial('pants_'+teamKey, scene); pantsMat.diffuseColor = new BABYLON.Color3(0.6,0.6,0.6);
+      const headMat = new BABYLON.StandardMaterial('head_'+teamKey, scene); headMat.diffuseColor = new BABYLON.Color3(1.0,0.86,0.72);
+      const hatMat = new BABYLON.StandardMaterial('hat_'+teamKey, scene); hatMat.diffuseColor = new BABYLON.Color3(0.08,0.08,0.08);
+      const musketMat = new BABYLON.StandardMaterial('musket_'+teamKey, scene); musketMat.diffuseColor = new BABYLON.Color3(0.25,0.18,0.1);
+      const torso = BABYLON.MeshBuilder.CreateBox('torso_'+teamKey, { height: 0.9, width: 0.5, depth: 0.32 }, scene); torso.material = jacketMat; torso.position.y = 0.95;
+      const legs = BABYLON.MeshBuilder.CreateBox('legs_'+teamKey, { height: 0.6, width: 0.36, depth: 0.3 }, scene); legs.material = pantsMat; legs.position.y = 0.3;
+      const head = BABYLON.MeshBuilder.CreateSphere('head_'+teamKey, { diameter: 0.31, segments: 8 }, scene); head.material = headMat; head.position.y = 1.35;
+      const brim = BABYLON.MeshBuilder.CreateCylinder('brim_'+teamKey, { height: 0.04, diameter: 0.48, tessellation: 12 }, scene); brim.material = hatMat; brim.position.y = 1.52;
+      const crown = BABYLON.MeshBuilder.CreateCylinder('crown_'+teamKey, { height: 0.22, diameter: 0.28, tessellation: 12 }, scene); crown.material = hatMat; crown.position.y = 1.65;
+      const musket = BABYLON.MeshBuilder.CreateBox('musket_'+teamKey, { height: 0.9, width: 0.05, depth: 0.07 }, scene); musket.material = musketMat; musket.position.set(0.31, 0.95, 0); musket.rotation.z = Math.PI/2;
+      const master = BABYLON.Mesh.MergeMeshes([torso, legs, head, brim, crown, musket], true, true, undefined, false, true); master.bakeCurrentTransformIntoVertices(); master.isVisible = false; master.isPickable = false; sg.addShadowCaster(master); return master;
+    }
+    const masterUS = buildSoldierMaster('US');
+    const masterUK = buildSoldierMaster('UK');
+
+    // ===== Unit Class =====
+    class Unit {
+      constructor({ team, isHero=false, name=null, position }) {
+        this.team = team; this.isHero = isHero; this.name = name || (isHero ? 'Hero' : (team + ' Soldier'));
+        this.mesh = (team === 'US' ? masterUS : masterUK).createInstance((team+'_'+(isHero?'H':'S')+'_'+Math.random()).replace(/\./g,''));
+        this.mesh.isVisible = true; this.mesh.alwaysSelectAsActiveMesh = true; this.mesh.position.copyFrom(position);
+        this.mesh.scaling = isHero ? new BABYLON.Vector3(1.15, 1.15, 1.15) : new BABYLON.Vector3(1,1,1);
+        this.radius = isHero ? 0.45 : 0.40; this.health = isHero ? 140 : 100; this.baseReload = isHero ? 2.1 : 2.6; this.reload = this.baseReload;
+        this.cooldown = Math.random() * 1.2; this.damage = isHero ? 50 : 35; this.inaccuracy = isHero ? 0.25 : 0.38; this.range = 32;
+        this.alive = true; this.fall = 0; this.buffTimer = 0; this.buffAccMult = 1.0; this.buffRofMult = 1.0; this.label = null;
+        this.stunTimer = 0; this.velY = 0; // for hurricane knock-up
+        if (this.isHero) {
+          const rect = new BABYLON.GUI.Rectangle(); rect.background = 'rgba(12,24,48,0.65)'; rect.thickness = 0.8; rect.color = 'rgba(255,255,255,0.4)'; rect.cornerRadius = 8; rect.height = '26px'; rect.width = '190px';
+          const txt = new BABYLON.GUI.TextBlock(); txt.text = this.name; txt.color = '#e6eefc'; txt.fontSize = 12; rect.addControl(txt); ui.addControl(rect); rect.linkWithMesh(this.mesh); rect.linkOffsetY = -90; this.label = rect;
+          const ring = BABYLON.MeshBuilder.CreateTorus('ring_'+this.name, { diameter: 1.2, thickness: 0.06, tessellation: 24 }, scene);
+          const rmat = new BABYLON.StandardMaterial('rmat_'+this.name, scene); rmat.diffuseColor = new BABYLON.Color3(1.0,0.86,0.2); rmat.emissiveColor = new BABYLON.Color3(0.6,0.5,0.1); ring.material = rmat; ring.position = this.mesh.position.add(new BABYLON.Vector3(0, 0.02, 0)); ring.rotation.x = Math.PI/2; ring.isPickable = false; this.ring = ring;
+        }
+      }
+      dispose(){ if (this.label) { this.label.dispose(); this.label = null; } if (this.ring) { this.ring.dispose(); this.ring = null; } this.mesh.dispose(); }
+      lookAt(v){ const d = v.subtract(this.mesh.position); const yaw = Math.atan2(d.x, d.z); this.mesh.rotation.y = yaw; }
+      takeDamage(d){ if (!this.alive) return; this.health -= d; if (this.health <= 0) { this.alive = false; this.health = 0; this.cooldown = 9999; playScream(0.28); } }
+      puff(dir){ const s = BABYLON.MeshBuilder.CreateSphere('puff', { diameter: 0.2, segments: 6 }, scene); const mat = new BABYLON.StandardMaterial('puffm', scene); mat.diffuseColor = new BABYLON.Color3(0.9,0.9,0.9); mat.alpha = 0.9; s.material = mat; const muzzle = this.mesh.position.add(new BABYLON.Vector3(0, 1.05, 0)).add(dir.scale(0.55)); s.position.copyFrom(muzzle); const life = 0.45; let t = 0; const obs = scene.onBeforeRenderObservable.add(() => { const dt = engine.getDeltaTime()/1000; t += dt; s.scaling.addInPlaceFromFloats(dt*2.5, dt*2.5, dt*2.5); mat.alpha = Math.max(0, 0.9*(1 - t/life)); s.position.addInPlace(new BABYLON.Vector3(0, dt*0.8, 0)); if (t >= life) { scene.onBeforeRenderObservable.remove(obs); s.dispose(); } }); }
+      fireAt(target){ const from = this.mesh.position.add(new BABYLON.Vector3(0, 1.05, 0)); const dist = BABYLON.Vector3.Distance(this.mesh.position, target.mesh.position); const sigma = (this.inaccuracy * (dist/25)) / this.buffAccMult; const aimOffset = new BABYLON.Vector3(randNorm()*sigma, randNorm()*sigma*0.5, randNorm()*sigma); const aimPoint = target.mesh.position.add(aimOffset); const dir = aimPoint.subtract(from).normalize(); const end = from.add(dir.scale(Math.min(this.range, dist + 6))); const line = BABYLON.MeshBuilder.CreateLines('tr', { points: [from, end] }, scene); line.color = new BABYLON.Color3(1,1,1); line.alpha = 0.9; line.isPickable = false; setTimeout(() => line.dispose(), 120); this.puff(dir); playMusket(this.isHero?0.44:0.35); const hit = aimPoint.subtract(target.mesh.position).length() <= target.radius; if (hit) target.takeDamage(this.damage); this.cooldown = (this.baseReload / this.buffRofMult) * (0.8 + Math.random()*0.4); }
+      update(dt, enemies){
+        // gravity for knock-up
+        if (this.mesh.position.y > 0 || this.velY > 0) {
+          this.velY -= 9.8 * dt * 3; // stronger gravity for snappier return
+          this.mesh.position.y = Math.max(0, this.mesh.position.y + this.velY * dt);
+          if (this.mesh.position.y === 0 && this.velY < 0) this.velY = 0;
+        }
+        if (!this.alive) { if (this.fall < 1) { this.fall = Math.min(1, this.fall + dt*1.2); this.mesh.rotation.x = -Math.PI/2 * this.fall; } return; }
+        // expire buffs
+        if (this.buffTimer > 0) { this.buffTimer -= dt; if (this.buffTimer <= 0) { this.buffTimer = 0; this.buffAccMult = 1.0; this.buffRofMult = 1.0; } }
+        // stun (cannot shoot while stunned)
+        if (this.stunTimer > 0) { this.stunTimer -= dt; this.cooldown -= dt; return; }
+        // acquire nearest living enemy
+        let best = null; let bd = 9999;
+        for (const e of enemies) { if (!e.alive) continue; const d = BABYLON.Vector3.Distance(this.mesh.position, e.mesh.position); if (d < bd) { bd = d; best = e; } }
+        if (!best) return; // no targets
+        this.lookAt(best.mesh.position);
+        if (bd <= this.range) { if (this.cooldown <= 0) this.fireAt(best); else this.cooldown -= dt; }
+        else { const step = Math.min(0.0, this.range - bd); if (step !== 0) this.mesh.position.addInPlace(this.mesh.forward.scale(step*dt)); this.cooldown -= dt; }
+      }
+      applyRally(duration=8, rofMult=1.3, accMult=1.18){ this.buffTimer = Math.max(this.buffTimer, duration); this.buffRofMult = Math.max(this.buffRofMult, rofMult); this.buffAccMult = Math.max(this.buffAccMult, accMult); }
+      tryInstantFire(enemies){ if (!this.alive) return; if (this.cooldown > 0.2) return; let best = null; let bd = 9999; for (const e of enemies) { if (!e.alive) continue; const d = BABYLON.Vector3.Distance(this.mesh.position, e.mesh.position); if (d < bd) { bd = d; best = e; } } if (best && bd <= this.range) this.fireAt(best); }
+    }
+
+    // ===== Game State =====
+    let unitsUS = [], unitsUK = [];
+    let washington = null, cornwallis = null;
+    let playing = false, gameOver = false;
+
+    function spawnArmies(){
+      const COLS = 12;             // soldiers per row
+      const ROWS = 4;              // number of rows per side
+      const spacingX = 1.4;        // horizontal spacing
+      const rowSpacing = 1.6;      // spacing between rows (front to back)
+      const startX = -((COLS - 1) * spacingX) / 2;
+
+      // Spawn grid for both armies (US rows extend toward negative Z, UK toward positive Z)
+      for (let r = 0; r < ROWS; r++) {
+        const zUS = -12 - r * rowSpacing;  // US front row near center, others behind
+        const zUK =  12 + r * rowSpacing;  // UK front row near center, others behind
+        for (let i = 0; i < COLS; i++) {
+          const us = new Unit({ team: 'US', position: new BABYLON.Vector3(startX + i*spacingX, 0, zUS) });
+          const uk = new Unit({ team: 'UK', position: new BABYLON.Vector3(startX + i*spacingX, 0, zUK) });
+          us.lookAt(new BABYLON.Vector3(us.mesh.position.x, 0, 12));
+          uk.lookAt(new BABYLON.Vector3(uk.mesh.position.x, 0, -12));
+          unitsUS.push(us); unitsUK.push(uk);
+        }
+      }
+
+      // Heroes
+      washington = new Unit({ team: 'US', isHero: true, name: 'George Washington', position: new BABYLON.Vector3(0,0,-14.2) });
+      washington.lookAt(new BABYLON.Vector3(0, 0, 12)); unitsUS.push(washington);
+
+      cornwallis = new Unit({ team: 'UK', isHero: true, name: 'Lord Cornwallis', position: new BABYLON.Vector3(0,0,14.2) });
+      cornwallis.lookAt(new BABYLON.Vector3(0, 0, -12)); unitsUK.push(cornwallis);
+
+      // slight horizontal jitter for variety
+      for (let i=0;i<unitsUS.length;i++) { unitsUS[i].mesh.position.x += (Math.random()-0.5)*0.3; }
+      for (let i=0;i<unitsUK.length;i++) { unitsUK[i].mesh.position.x += (Math.random()-0.5)*0.3; }
+    }
+
+        function clearArmies(){ for (const u of unitsUS) u.dispose(); for (const u of unitsUK) u.dispose(); unitsUS = []; unitsUK = []; washington = null; cornwallis = null; gameOver = false; playing = false; }
+
+    // ===== UI & Loop =====
+    const scoreEl = document.getElementById('score');
+    const startBtn = document.getElementById('startBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const runTestsBtn = document.getElementById('runTestsBtn');
+    const usChargeBtn = document.getElementById('usChargeBtn');
+    const usCannonBtn = document.getElementById('usCannonBtn');
+    const ukVolleyBtn = document.getElementById('ukVolleyBtn');
+    const ukHurricaneBtn = document.getElementById('ukHurricaneBtn');
+    const banner = document.getElementById('banner');
+    const bannerTitle = document.getElementById('bannerTitle');
+    const bannerSub = document.getElementById('bannerSub');
+    const closeBanner = document.getElementById('closeBanner');
+    const testsOut = document.getElementById('testsOut');
+    const tipEl = document.getElementById('tip');
+
+    let usChargeCD = 0, ukVolleyCD = 0, usCannonCD = 0, ukHurricaneCD = 0; // seconds
+    let cannonTargeting = false, hurricaneTargeting = false;
+
+    function fmt(n){ return Math.max(0, Math.ceil(n)); }
+
+    function updateHUD(){
+      const aliveUS = unitsUS.filter(u => u.alive).length; const aliveUK = unitsUK.filter(u => u.alive).length;
+      scoreEl.textContent = `US: ${aliveUS} alive • UK: ${aliveUK} alive` + (gameOver? ' — Finished' : '');
+      if (usChargeCD > 0) { usChargeBtn.textContent = `Washington: Charge Soldiers (${fmt(usChargeCD)}s)`; usChargeBtn.disabled = true; } else { usChargeBtn.textContent = 'Washington: Charge Soldiers'; usChargeBtn.disabled = !playing; }
+      if (usCannonCD > 0) { usCannonBtn.textContent = `Washington: Cannon (${fmt(usCannonCD)}s)`; usCannonBtn.disabled = true; } else { usCannonBtn.textContent = cannonTargeting ? 'Washington: Cannon (Targeting...)' : 'Washington: Cannon'; usCannonBtn.disabled = !playing; }
+      if (ukVolleyCD > 0) { ukVolleyBtn.textContent = `Cornwallis: Volley (${fmt(ukVolleyCD)}s)`; ukVolleyBtn.disabled = true; } else { ukVolleyBtn.textContent = 'Cornwallis: Volley'; ukVolleyBtn.disabled = !playing; }
+      if (ukHurricaneCD > 0) { ukHurricaneBtn.textContent = `Cornwallis: Hurricane (${fmt(ukHurricaneCD)}s)`; ukHurricaneBtn.disabled = true; } else { ukHurricaneBtn.textContent = hurricaneTargeting ? 'Cornwallis: Hurricane (Targeting...)' : 'Cornwallis: Hurricane'; ukHurricaneBtn.disabled = !playing; }
+      resetBtn.disabled = !playing && unitsUS.length === 0 && unitsUK.length === 0;
+    }
+
+    function endGame(winner){ gameOver = true; playing = false; updateHUD(); playFanfare(winner); bannerTitle.textContent = `${winner} Wins!`; bannerSub.textContent = winner === 'US' ? 'George Washington leads the Continentals to victory!' : (winner === 'UK' ? 'Lord Cornwallis holds the field for the British!' : 'Both armies are spent.'); banner.style.display = 'grid'; }
+
+    startBtn.addEventListener('click', () => { ensureAudio(); if (playing || unitsUS.length || unitsUK.length) return; spawnArmies(); playing = true; startBtn.disabled = true; resetBtn.disabled = false; usChargeBtn.disabled = false; usCannonBtn.disabled = false; ukVolleyBtn.disabled = false; ukHurricaneBtn.disabled = false; updateHUD(); });
+    resetBtn.addEventListener('click', () => { banner.style.display = 'none'; clearArmies(); startBtn.disabled = false; usChargeBtn.disabled = true; usCannonBtn.disabled = true; ukVolleyBtn.disabled = true; ukHurricaneBtn.disabled = true; cannonTargeting = false; hurricaneTargeting = false; tipEl.textContent = 'Tip: drag to orbit, mousewheel zoom, right‑click to pan. Click a hero skill when ready.'; updateHUD(); });
+    closeBanner.addEventListener('click', () => banner.style.display = 'none');
+
+    // Washington: Charge Soldiers (replaces Rally)
+    usChargeBtn.addEventListener('click', () => {
+      if (!playing || usChargeCD > 0) return;
+      for (const u of unitsUS) if (u.alive) u.applyRally(8, 1.35, 1.22); // same buff as Rally
+      usChargeCD = 22;
+      playChargeChorus();
+      updateHUD();
+    });
+
+    // Cornwallis: Volley
+    ukVolleyBtn.addEventListener('click', () => { if (!playing || ukVolleyCD > 0) return; const ready = unitsUK.filter(u => u.alive); for (const u of ready) u.tryInstantFire(unitsUS); ukVolleyCD = 20; updateHUD(); });
+
+    // ===== Washington Cannon =====
+    const CANNON_RADIUS = 4.5;
+    function doExplosionAt(center, radius, unitsToAffect){
+      const ring = BABYLON.MeshBuilder.CreateTorus('shock', { diameter: 0.1, thickness: 0.02 }, scene);
+      const rmat = new BABYLON.StandardMaterial('shockm', scene); rmat.emissiveColor = new BABYLON.Color3(1,1,1); rmat.alpha = 0.9; ring.material = rmat; ring.rotation.x = Math.PI/2; ring.position = new BABYLON.Vector3(center.x, 0.05, center.z); ring.isPickable = false;
+      let t = 0; const obs = scene.onBeforeRenderObservable.add(() => { const dt = engine.getDeltaTime()/1000; t += dt; const s = 1 + t*18; ring.scaling = new BABYLON.Vector3(s, 1, s); rmat.alpha = Math.max(0, 0.9 - t*1.6); if (t>0.7){ scene.onBeforeRenderObservable.remove(obs); ring.dispose(); }});
+      const puff = BABYLON.MeshBuilder.CreateSphere('exp', { diameter: 0.3, segments: 8 }, scene); const pm = new BABYLON.StandardMaterial('expm', scene); pm.diffuseColor = new BABYLON.Color3(0.9,0.88,0.86); pm.alpha = 0.8; puff.material = pm; puff.position = new BABYLON.Vector3(center.x, 0.2, center.z); let tt=0; const obs2 = scene.onBeforeRenderObservable.add(()=>{ const dt = engine.getDeltaTime()/1000; tt+=dt; puff.scaling.addInPlaceFromFloats(dt*6, dt*2.5, dt*6); pm.alpha = Math.max(0, 0.8 - tt*1.2); if (tt>0.7){ scene.onBeforeRenderObservable.remove(obs2); puff.dispose(); }});
+      playExplosion(0.85);
+      for (const u of unitsToAffect){ if (!u.alive) continue; const d = distXZ(u.mesh.position, center); if (d <= radius) { u.takeDamage(1e6); }}
+    }
+    function fireCannonAt(target){ if (!washington || !washington.alive) return; const origin = washington.mesh.position.add(new BABYLON.Vector3(0, 1.2, 0)); const ball = BABYLON.MeshBuilder.CreateSphere('ball', { diameter: 0.28, segments: 8 }, scene); const bmat = new BABYLON.StandardMaterial('ballm', scene); bmat.diffuseColor = new BABYLON.Color3(0.1,0.1,0.1); ball.material = bmat; ball.position.copyFrom(origin); ball.isPickable = false; const to = new BABYLON.Vector3(target.x, 0.2, target.z); const dxz = distXZ(origin, to); const flight = clamp(0.65 + dxz*0.04, 0.65, 2.2); const peak = 4 + dxz*0.12; let t=0; const obs = scene.onBeforeRenderObservable.add(()=>{ const dt = engine.getDeltaTime()/1000; t += dt/flight; if (t>=1){ scene.onBeforeRenderObservable.remove(obs); ball.dispose(); doExplosionAt(to, CANNON_RADIUS, unitsUK); return; } const p = t; const pos = new BABYLON.Vector3( origin.x + (to.x - origin.x)*p, origin.y + (to.y - origin.y)*p + 4*peak*p*(1-p), origin.z + (to.z - origin.z)*p ); ball.position.copyFrom(pos); }); }
+
+    usCannonBtn.addEventListener('click', () => { if (!playing || usCannonCD > 0) return; cannonTargeting = true; tipEl.textContent = 'Washington Cannon: click a spot on the ground to fire.'; updateHUD(); });
+
+    // ===== Cornwallis Hurricane =====
+    const HURRICANE_RADIUS = 5.0; const HURRICANE_STUN = 3.0; // seconds
+    function doHurricaneAt(center, radius, unitsToAffect){
+      const twister = BABYLON.MeshBuilder.CreateCylinder('twister', { height: 5, diameterTop: 1.0, diameterBottom: 4.0, tessellation: 32 }, scene);
+      const wmat = new BABYLON.StandardMaterial('twisterm', scene); wmat.diffuseColor = new BABYLON.Color3(0.65,0.78,1.0); wmat.alpha = 0.28; twister.material = wmat; twister.position = new BABYLON.Vector3(center.x, 2.5, center.z); twister.isPickable = false;
+      const debris = []; for (let i=0;i<10;i++){ const s = BABYLON.MeshBuilder.CreateSphere('d'+i, { diameter: 0.12, segments: 6 }, scene); const sm = new BABYLON.StandardMaterial('dm'+i, scene); sm.diffuseColor = new BABYLON.Color3(0.85,0.9,1); sm.emissiveColor = new BABYLON.Color3(0.2,0.25,0.6); sm.alpha = 0.85; s.material = sm; s.isPickable = false; debris.push(s); }
+      let t=0; const dur = 1.6; const obs = scene.onBeforeRenderObservable.add(()=>{ const dt = engine.getDeltaTime()/1000; t+=dt; twister.rotation.y += dt*6; for (let i=0;i<debris.length;i++){ const a = i/debris.length * Math.PI*2 + t*6; const r = 1.2 + (i%3)*0.4; const y = 0.3 + (t*3 + i*0.2) % 4.4; debris[i].position.set(center.x + Math.cos(a)*r, y, center.z + Math.sin(a)*r); } wmat.alpha = Math.max(0, 0.28 * (1 - t/dur)); if (t>=dur){ scene.onBeforeRenderObservable.remove(obs); twister.dispose(); for (const s of debris) s.dispose(); } });
+      playWind(0.65, 1.3);
+      for (const u of unitsToAffect){ if (!u.alive) continue; const d = distXZ(u.mesh.position, center); if (d <= radius) { u.stunTimer = Math.max(u.stunTimer, HURRICANE_STUN); u.velY = Math.max(u.velY, 6 + Math.random()*2); u.mesh.position.x += (Math.random()-0.5)*0.6; u.mesh.position.z += (Math.random()-0.5)*0.6; } }
+    }
+
+    ukHurricaneBtn.addEventListener('click', () => { if (!playing || ukHurricaneCD > 0) return; hurricaneTargeting = true; tipEl.textContent = 'Cornwallis Hurricane: click ground to summon a whirlwind.'; updateHUD(); });
+
+    // ===== Ground targeting handler (cannon & hurricane) =====
+    scene.onPointerObservable.add((pi)=>{
+      if (pi.type !== BABYLON.PointerEventTypes.POINTERDOWN) return; const pick = scene.pick(scene.pointerX, scene.pointerY, (m)=> m === ground); if (!pick || !pick.hit || !pick.pickedPoint) return;
+      if (cannonTargeting) { cannonTargeting = false; usCannonCD = 10; updateHUD(); tipEl.textContent = 'Tip: drag to orbit, mousewheel zoom, right‑click to pan. Click a hero skill when ready.'; fireCannonAt(pick.pickedPoint); return; }
+      if (hurricaneTargeting) { hurricaneTargeting = false; ukHurricaneCD = 6; updateHUD(); tipEl.textContent = 'Tip: drag to orbit, mousewheel zoom, right‑click to pan. Click a hero skill when ready.'; doHurricaneAt(pick.pickedPoint, HURRICANE_RADIUS, unitsUS); return; }
+    });
+
+    // ===== Self-test harness =====
+    function runSelfTests(){ const lines = []; const ok = (name) => lines.push(`✅ ${name}`); const bad = (name, e) => lines.push(`❌ ${name}: ${e && e.message ? e.message : e}`);
+      try { if (!scene.onBeforeRenderObservable || typeof scene.onBeforeRenderObservable.add !== 'function') throw new Error('scene.onBeforeRenderObservable.add missing'); ok('Scene observable is add-able'); } catch (e) { bad('Scene observable is add-able', e); }
+      try { const f = () => {}; const obs = scene.onBeforeRenderObservable.add(f); const removed = scene.onBeforeRenderObservable.remove(obs); if (!removed) throw new Error('remove() did not return true'); ok('Observable add/remove cycle'); } catch (e) { bad('Observable add/remove cycle', e); }
+      try { const tmp = new Unit({ team:'US', position: new BABYLON.Vector3(-60,0,-40) }); tmp.puff(new BABYLON.Vector3(1,0,0)); tmp.dispose(); ok('Unit.puff ok'); } catch (e) { bad('Unit.puff ok', e); }
+      try { // Cannon radius kill test (enemy-only)
+        const center = new BABYLON.Vector3(5,0,5); const e1 = new Unit({ team:'UK', position: new BABYLON.Vector3(5,0,5) }); const e2 = new Unit({ team:'UK', position: new BABYLON.Vector3(8.9,0,5) }); const e3 = new Unit({ team:'UK', position: new BABYLON.Vector3(5,0,8.9) }); const f1 = new Unit({ team:'US', position: new BABYLON.Vector3(5,0,6) });
+        doExplosionAt(center, 4.5, [e1,e2,e3]); if (!(e1.alive===false && e2.alive===false && e3.alive===false)) throw new Error('enemies inside radius should die'); if (!f1.alive) throw new Error('friendly should not be affected by enemy-targeted blast'); e1.dispose(); e2.dispose(); e3.dispose(); f1.dispose(); ok('Cannon explosion kills enemies in radius only');
+      } catch (e) { bad('Cannon explosion kills enemies in radius only', e); }
+      try { // Hurricane stun test (enemy-only)
+        const c = new BABYLON.Vector3(0,0,0); const a = new Unit({ team:'US', position: new BABYLON.Vector3(0,0,0) }); const b = new Unit({ team:'US', position: new BABYLON.Vector3(4.9,0,0) }); const out = new Unit({ team:'US', position: new BABYLON.Vector3(5.4,0,0) }); const uk = new Unit({ team:'UK', position: new BABYLON.Vector3(0,0,0) });
+        doHurricaneAt(c, HURRICANE_RADIUS, [a,b,out]); if (!(a.stunTimer>0 && b.stunTimer>0)) throw new Error('US inside radius should be stunned'); if (out.stunTimer>0) throw new Error('US outside radius should not be stunned'); if (uk.stunTimer>0) throw new Error('UK should not be affected in this test'); a.dispose(); b.dispose(); out.dispose(); uk.dispose(); ok('Hurricane stuns only targeted enemies in radius');
+      } catch (e) { bad('Hurricane stuns only targeted enemies in radius', e); }
+      try { // Charge Soldiers: buff without material change
+        const u = new Unit({ team:'US', position: new BABYLON.Vector3(-10,0,-10) }); const matBefore = u.mesh.material; u.applyRally(8, 1.35, 1.22); if (!(u.buffTimer>=8 && u.buffRofMult>=1.3 && u.buffAccMult>=1.18)) throw new Error('charge buff not applied'); if (u.mesh.material !== matBefore) throw new Error('charge should not alter materials/visuals'); u.dispose(); ok('Charge Soldiers applies buff without visuals');
+      } catch (e) { bad('Charge Soldiers applies buff without visuals', e); }
+      try { // Death sets alive=false (sound not asserted)
+        const u = new Unit({ team:'US', position: new BABYLON.Vector3(0,0,0) }); u.takeDamage(9999); if (u.alive) throw new Error('death flag not set'); u.dispose(); ok('Death flag set on lethal damage');
+      } catch (e) { bad('Death flag set on lethal damage', e); }
+      testsOut.textContent = lines.join('  |  '); setTimeout(()=>{ testsOut.textContent = ''; }, 8000); console.log('[Self-Tests]', lines.join('\n'));
+    }
+
+    runTestsBtn.addEventListener('click', runSelfTests);
+
+    // ===== Main game loop =====
+    scene.onBeforeRenderObservable.add(() => {
+      const dt = engine.getDeltaTime()/1000;
+      if (!gameOver && playing) {
+        if (usChargeCD > 0) usChargeCD = Math.max(0, usChargeCD - dt);
+        if (ukVolleyCD > 0) ukVolleyCD = Math.max(0, ukVolleyCD - dt);
+        if (usCannonCD > 0) usCannonCD = Math.max(0, usCannonCD - dt);
+        if (ukHurricaneCD > 0) ukHurricaneCD = Math.max(0, ukHurricaneCD - dt);
+        for (const u of unitsUS) u.update(dt, unitsUK);
+        for (const u of unitsUK) u.update(dt, unitsUS);
+        const aliveUS = unitsUS.some(u => u.alive); const aliveUK = unitsUK.some(u => u.alive);
+        if (!aliveUS && aliveUK) endGame('UK'); else if (!aliveUK && aliveUS) endGame('US'); else if (!aliveUS && !aliveUK) endGame('Draw');
+        updateHUD();
+      } else { updateHUD(); }
+    });
+
+    engine.runRenderLoop(() => scene.render());
+    window.addEventListener('resize', () => engine.resize());
+  })();
+  </script>
+</body>
+</html>
