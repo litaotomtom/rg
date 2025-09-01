@@ -263,8 +263,11 @@
     let playing = false, gameOver = false;
     let cannons = [];
 
+    const FRONT_Z = 18;             // distance of front row from center
+    const CANNON_Z = FRONT_Z + 6;   // cannon distance from center
+
     function spawnCannonForSide(team){
-      const z = team==='US' ? -18 : 18;
+      const z = team==='US' ? -CANNON_Z : CANNON_Z;
       const x = team==='US' ? -24 : 24;
 
       const barrel = BABYLON.MeshBuilder.CreateCylinder('barrel_'+team, { diameter:0.38, height:2.2, tessellation:12 }, scene);
@@ -292,7 +295,7 @@
 
       const soldierPos = new BABYLON.Vector3(x + (team==='US'?1.5:-1.5), 0, z + (team==='US'?0.5:-0.5));
       const op = new Unit({ team, position: soldierPos });
-      op.lookAt(new BABYLON.Vector3(op.mesh.position.x, 0, team==='US'?12:-12));
+      op.lookAt(new BABYLON.Vector3(op.mesh.position.x, 0, team==='US'?FRONT_Z:-FRONT_Z));
       op.range = 0; op.wanderDisabled = true; op.cooldown = 9999;
       if (team==='US') unitsUS.push(op); else unitsUK.push(op);
       cannons.push({ team, mesh: cannon, cooldown: 3 + Math.random() });
@@ -301,29 +304,30 @@
     function spawnArmies(){
       const COLS = 12;             // soldiers per row
       const ROWS = 4;              // number of rows per side
-      const spacingX = 5.3;        // horizontal spacing
-      const rowSpacing = 2.2;      // spacing between rows (front to back)
+      const spacingX = 8.9;        // horizontal spacing
+      const rowSpacing = 4.4;      // spacing between rows (front to back)
       const startX = -((COLS - 1) * spacingX) / 2;
 
       // Spawn grid for both armies (US rows extend toward negative Z, UK toward positive Z)
       for (let r = 0; r < ROWS; r++) {
-        const zUS = -12 - r * rowSpacing;  // US front row near center, others behind
-        const zUK =  12 + r * rowSpacing;  // UK front row near center, others behind
+        const zUS = -FRONT_Z - r * rowSpacing;  // US front row near center, others behind
+        const zUK =  FRONT_Z + r * rowSpacing;  // UK front row near center, others behind
         for (let i = 0; i < COLS; i++) {
           const us = new Unit({ team: 'US', position: new BABYLON.Vector3(startX + i*spacingX, 0, zUS) });
           const uk = new Unit({ team: 'UK', position: new BABYLON.Vector3(startX + i*spacingX, 0, zUK) });
-          us.lookAt(new BABYLON.Vector3(us.mesh.position.x, 0, 12));
-          uk.lookAt(new BABYLON.Vector3(uk.mesh.position.x, 0, -12));
+          us.lookAt(new BABYLON.Vector3(us.mesh.position.x, 0, FRONT_Z));
+          uk.lookAt(new BABYLON.Vector3(uk.mesh.position.x, 0, -FRONT_Z));
           unitsUS.push(us); unitsUK.push(uk);
         }
       }
 
       // Heroes
-      washington = new Unit({ team: 'US', isHero: true, name: 'George Washington', position: new BABYLON.Vector3(0,0,-14.2) });
-      washington.lookAt(new BABYLON.Vector3(0, 0, 12)); unitsUS.push(washington);
+      const heroZ = FRONT_Z + rowSpacing;
+      washington = new Unit({ team: 'US', isHero: true, name: 'George Washington', position: new BABYLON.Vector3(0,0,-heroZ) });
+      washington.lookAt(new BABYLON.Vector3(0, 0, FRONT_Z)); unitsUS.push(washington);
 
-      cornwallis = new Unit({ team: 'UK', isHero: true, name: 'Lord Cornwallis', position: new BABYLON.Vector3(0,0,14.2) });
-      cornwallis.lookAt(new BABYLON.Vector3(0, 0, -12)); unitsUK.push(cornwallis);
+      cornwallis = new Unit({ team: 'UK', isHero: true, name: 'Lord Cornwallis', position: new BABYLON.Vector3(0,0,heroZ) });
+      cornwallis.lookAt(new BABYLON.Vector3(0, 0, -FRONT_Z)); unitsUK.push(cornwallis);
 
       // slight horizontal jitter for variety
       for (let i=0;i<unitsUS.length;i++) { unitsUS[i].mesh.position.x += (Math.random()-0.5)*0.3; }
