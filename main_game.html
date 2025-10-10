@@ -180,15 +180,55 @@
       const jacketMat = new BABYLON.StandardMaterial('jacket_'+teamKey, scene); jacketMat.diffuseColor = COLORS[teamKey]; jacketMat.specularColor = new BABYLON.Color3(0.2,0.2,0.2);
       const pantsMat = new BABYLON.StandardMaterial('pants_'+teamKey, scene); pantsMat.diffuseColor = new BABYLON.Color3(0.6,0.6,0.6);
       const headMat = new BABYLON.StandardMaterial('head_'+teamKey, scene); headMat.diffuseColor = new BABYLON.Color3(1.0,0.86,0.72);
-      const hatMat = new BABYLON.StandardMaterial('hat_'+teamKey, scene); hatMat.diffuseColor = new BABYLON.Color3(0.08,0.08,0.08);
+      const hatMat = new BABYLON.StandardMaterial('hat_'+teamKey, scene); hatMat.diffuseColor = new BABYLON.Color3(0.05,0.05,0.05);
       const musketMat = new BABYLON.StandardMaterial('musket_'+teamKey, scene); musketMat.diffuseColor = new BABYLON.Color3(0.25,0.18,0.1);
-      const torso = BABYLON.MeshBuilder.CreateBox('torso_'+teamKey, { height: 0.9, width: 0.5, depth: 0.32 }, scene); torso.material = jacketMat; torso.position.y = 0.95;
-      const legs = BABYLON.MeshBuilder.CreateBox('legs_'+teamKey, { height: 0.6, width: 0.36, depth: 0.3 }, scene); legs.material = pantsMat; legs.position.y = 0.3;
-      const head = BABYLON.MeshBuilder.CreateSphere('head_'+teamKey, { diameter: 0.31, segments: 8 }, scene); head.material = headMat; head.position.y = 1.35;
-      const brim = BABYLON.MeshBuilder.CreateCylinder('brim_'+teamKey, { height: 0.04, diameter: 0.48, tessellation: 12 }, scene); brim.material = hatMat; brim.position.y = 1.52;
-      const crown = BABYLON.MeshBuilder.CreateCylinder('crown_'+teamKey, { height: 0.22, diameter: 0.28, tessellation: 12 }, scene); crown.material = hatMat; crown.position.y = 1.65;
-      const musket = BABYLON.MeshBuilder.CreateBox('musket_'+teamKey, { height: 0.9, width: 0.05, depth: 0.07 }, scene); musket.material = musketMat; musket.position.set(0.31, 0.95, 0); musket.rotation.z = Math.PI/2;
-      const master = BABYLON.Mesh.MergeMeshes([torso, legs, head, brim, crown, musket], true, true, undefined, false, true); master.bakeCurrentTransformIntoVertices(); master.isVisible = false; master.isPickable = false; sg.addShadowCaster(master); return master;
+      const bootMat = new BABYLON.StandardMaterial('boot_'+teamKey, scene); bootMat.diffuseColor = new BABYLON.Color3(0.12,0.12,0.16);
+      const accentMat = new BABYLON.StandardMaterial('accent_'+teamKey, scene); accentMat.diffuseColor = new BABYLON.Color3(0.92,0.92,0.92);
+      const satelliteMat = new BABYLON.StandardMaterial('satellite_'+teamKey, scene); satelliteMat.diffuseColor = new BABYLON.Color3(0.25,0.42,0.72);
+
+      const torso = BABYLON.MeshBuilder.CreateBox('torso_'+teamKey, { height: 1.0, width: 0.48, depth: 0.34 }, scene); torso.material = jacketMat; torso.position.y = 1.1;
+      const waist = BABYLON.MeshBuilder.CreateCylinder('waist_'+teamKey, { height: 0.18, diameterTop: 0.36, diameterBottom: 0.42, tessellation: 6 }, scene); waist.material = jacketMat; waist.position.y = 0.72;
+      const hips = BABYLON.MeshBuilder.CreateBox('hips_'+teamKey, { height: 0.28, width: 0.42, depth: 0.32 }, scene); hips.material = pantsMat; hips.position.y = 0.55;
+
+      const thighL = BABYLON.MeshBuilder.CreateBox('thighL_'+teamKey, { height: 0.42, width: 0.16, depth: 0.18 }, scene); thighL.material = pantsMat; thighL.position.set(-0.14, 0.32, 0);
+      const thighR = thighL.clone('thighR_'+teamKey); thighR.position.x = 0.14;
+      const shinL = BABYLON.MeshBuilder.CreateBox('shinL_'+teamKey, { height: 0.4, width: 0.14, depth: 0.16 }, scene); shinL.material = pantsMat; shinL.position.set(-0.14, 0.06, 0.01);
+      const shinR = shinL.clone('shinR_'+teamKey); shinR.position.x = 0.14;
+      const bootL = BABYLON.MeshBuilder.CreateBox('bootL_'+teamKey, { height: 0.16, width: 0.16, depth: 0.24 }, scene); bootL.material = bootMat; bootL.position.set(-0.14, -0.18, 0.03);
+      const bootR = bootL.clone('bootR_'+teamKey); bootR.position.x = 0.14;
+
+      const shoulderL = BABYLON.MeshBuilder.CreateSphere('shoulderL_'+teamKey, { diameter: 0.22 }, scene); shoulderL.material = jacketMat; shoulderL.position.set(-0.3, 1.26, 0);
+      const shoulderR = shoulderL.clone('shoulderR_'+teamKey); shoulderR.position.x = 0.3;
+      const upperArmL = BABYLON.MeshBuilder.CreateCylinder('upperArmL_'+teamKey, { height: 0.46, diameter: 0.14, tessellation: 12 }, scene); upperArmL.material = jacketMat; upperArmL.position.set(-0.42, 1.0, 0.02); upperArmL.rotation.z = Math.PI / 2.2;
+      const upperArmR = upperArmL.clone('upperArmR_'+teamKey); upperArmR.position.x = 0.42; upperArmR.rotation.z = -Math.PI / 2.2;
+      const forearmL = BABYLON.MeshBuilder.CreateCylinder('forearmL_'+teamKey, { height: 0.44, diameter: 0.12, tessellation: 12 }, scene); forearmL.material = jacketMat; forearmL.position.set(-0.52, 0.76, 0.02); forearmL.rotation.z = Math.PI / 2.6;
+      const forearmR = forearmL.clone('forearmR_'+teamKey); forearmR.position.x = 0.52; forearmR.rotation.z = -Math.PI / 2.6;
+      const handL = BABYLON.MeshBuilder.CreateSphere('handL_'+teamKey, { diameter: 0.14 }, scene); handL.material = headMat; handL.position.set(-0.62, 0.6, 0.04);
+      const handR = handL.clone('handR_'+teamKey); handR.position.x = 0.62;
+
+      const head = BABYLON.MeshBuilder.CreateSphere('head_'+teamKey, { diameter: 0.34, segments: 10 }, scene); head.material = headMat; head.position.y = 1.62;
+      const nose = BABYLON.MeshBuilder.CreateCylinder('nose_'+teamKey, { height: 0.08, diameterTop: 0.04, diameterBottom: 0.05 }, scene); nose.material = headMat; nose.position.set(0, 1.62, 0.16); nose.rotation.x = Math.PI / 2;
+
+      const brimA = BABYLON.MeshBuilder.CreateBox('brimA_'+teamKey, { height: 0.04, width: 0.62, depth: 0.22 }, scene); brimA.material = hatMat; brimA.position.set(0, 1.84, 0);
+      const brimB = brimA.clone('brimB_'+teamKey); brimB.rotation.y = Math.PI / 3; brimB.bakeCurrentTransformIntoVertices();
+      const brimC = brimA.clone('brimC_'+teamKey); brimC.rotation.y = -Math.PI / 3; brimC.bakeCurrentTransformIntoVertices();
+      brimA.bakeCurrentTransformIntoVertices();
+      const crown = BABYLON.MeshBuilder.CreateCylinder('crown_'+teamKey, { height: 0.22, diameter: 0.24, tessellation: 12 }, scene); crown.material = hatMat; crown.position.y = 1.94;
+      const hatTrim = BABYLON.MeshBuilder.CreateTorus('hatTrim_'+teamKey, { diameter: 0.26, thickness: 0.03, tessellation: 18 }, scene); hatTrim.material = accentMat; hatTrim.position.y = 1.92; hatTrim.scaling.y = 0.6;
+
+      const crossStrap = BABYLON.MeshBuilder.CreateBox('strap_'+teamKey, { height: 0.05, width: 0.12, depth: 0.7 }, scene); crossStrap.material = accentMat; crossStrap.rotation.x = Math.PI / 3.1; crossStrap.rotation.z = Math.PI / 12; crossStrap.position.set(0.04, 1.02, 0.06);
+      const belt = BABYLON.MeshBuilder.CreateBox('belt_'+teamKey, { height: 0.1, width: 0.5, depth: 0.12 }, scene); belt.material = accentMat; belt.position.y = 0.84;
+
+      const backpack = BABYLON.MeshBuilder.CreateBox('pack_'+teamKey, { height: 0.42, width: 0.28, depth: 0.16 }, scene); backpack.material = satelliteMat; backpack.position.set(0, 1.1, -0.25);
+      const panelL = BABYLON.MeshBuilder.CreateBox('panelL_'+teamKey, { height: 0.34, width: 0.02, depth: 0.5 }, scene); panelL.material = satelliteMat; panelL.position.set(-0.26, 1.1, -0.08);
+      const panelR = panelL.clone('panelR_'+teamKey); panelR.position.x = 0.26;
+      const dish = BABYLON.MeshBuilder.CreateSphere('dish_'+teamKey, { diameter: 0.16, segments: 6 }, scene); dish.material = satelliteMat; dish.scaling.z = 0.4; dish.position.set(0, 1.26, -0.44);
+
+      const musket = BABYLON.MeshBuilder.CreateBox('musket_'+teamKey, { height: 0.96, width: 0.05, depth: 0.08 }, scene); musket.material = musketMat; musket.position.set(0.34, 0.98, 0.02); musket.rotation.z = Math.PI/2;
+
+      const parts = [torso, waist, hips, thighL, thighR, shinL, shinR, bootL, bootR, shoulderL, shoulderR, upperArmL, upperArmR, forearmL, forearmR, handL, handR, head, nose, brimA, brimB, brimC, crown, hatTrim, crossStrap, belt, backpack, panelL, panelR, dish, musket];
+      const master = BABYLON.Mesh.MergeMeshes(parts, true, true, undefined, false, true);
+      master.bakeCurrentTransformIntoVertices(); master.isVisible = false; master.isPickable = false; sg.addShadowCaster(master); return master;
     }
     const masterUS = buildSoldierMaster('US');
     const masterUK = buildSoldierMaster('UK');
